@@ -1,103 +1,93 @@
-
-#=================================================
-# Description: Build OpenWrt using GitHub Actions
-# Lisence: MIT
-# Author: eSirPlayground
-# Youtube Channel: https://goo.gl/fvkdwm 
-#=================================================
-
 name: Build_armv7
 
-# Add a button to trigger the workflow
 on: 
   repository_dispatch:
   workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu--latest
+    timeout-minutes: 480
 
     steps:
     - name: Checkout
-      uses: actions/checkout@master
+      uses: actions/checkout@v4
 
     - name: Initialization environment
       env:
         DEBIAN_FRONTEND: noninteractive
       run: |
-        set +e
-        docker rmi `docker images -q`
-        echo "Deleting files, please wait ..."
+        set -ex
+        # 清理磁盘空间
         sudo rm -rf \
           /usr/share/dotnet \
-          /etc/mysql \
           /usr/local/lib/android \
-          /opt/ghc \
-          /etc/php
-        sudo -E apt-get -y purge azure-cli* docker* ghc* zulu* hhvm* llvm* firefox* google* dotnet* aspnetcore* powershell* openjdk* adoptopenjdk* mysql* php* mongodb* moby* snap* || true
-        sudo -E apt-get update
-        sudo -E apt-get -y install ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential bzip2 ccache cmake cpio curl device-tree-compiler fastjar flex gawk gettext gcc-multilib g++-multilib git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libfuse-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev libreadline-dev libssl-dev libtool lrzsz mkisofs msmtp ninja-build p7zip p7zip-full patch pkgconf python2.7 python3 python3-pyelftools python3-setuptools qemu-utils rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev qemu-img
-        sudo -E apt-get -y autoremove --purge
-        sudo -E apt-get clean
+          /opt/ghc
+        
+        # 使用 ImmortalWrt 官方环境脚本
+        sudo bash -c 'bash <(curl -s https://build-scripts.immortalwrt.org/init_build_environment.sh)'
+        
+        # 额外安装必要工具
+        sudo apt install -y qemu-utils upx-ucl
 
     - name: Clone source code
       env: 
-        REPO_URL: https://github.com/coolsnowwolf/lede
+        REPO_URL: https://github.com/immortalwrt/immortalwrt
         REPO_BRANCH: master
       run: |
-        git clone --depth 1 $REPO_URL -b $REPO_BRANCH openwrt
-        cd openwrt
-        echo "src-git ssrp https://github.com/fw876/helloworld.git" >> ./feeds.conf.default
+        git clone -b $REPO_BRANCH --single-branch --filter=blob:none $REPO_URL immortalwrt
+        cd immortalwrt
+        echo "src-git helloworld https://github.com/fw876/helloworld.git" >> ./feeds.conf.default
 
-    - name: Update & Install feeds
-      working-directory: ./openwrt
+    - name: Update feeds
+      working-directory: ./immortalwrt
       run: |
         ./scripts/feeds update -a
         ./scripts/feeds install -a
+
+    - name: Install PassWall
+      working-directory: ./immortalwrt
+      run: |
+        # 更安全的 PassWall 安装方式
+        git clone https://github.com/xiaorouji/openwrt-passwall-packages package/passwall-packages
+        git clone https://github.com/xiaorouji/openwrt-passwall package/passwall
         ./scripts/feeds install -a
 
-    - name: Import external feeds - passwall
-      working-directory: ./openwrt
+    - name: Install Argon theme
+      working-directory: ./immortalwrt
       run: |
-        # 移除 openwrt feeds 自带的核心库
-        rm -rf feeds/packages/net/{xray-core,v2ray-geodata,sing-box,chinadns-ng,dns2socks,hysteria,ipt2socks,microsocks,naiveproxy,shadowsocks-libev,shadowsocks-rust,shadowsocksr-libev,simple-obfs,tcping,trojan-plus,tuic-client,v2ray-plugin,xray-plugin,geoview,shadow-tls}
-        git clone https://github.com/xiaorouji/openwrt-passwall-packages package/passwall-packages
-        rm -rf feeds/luci/applications/luci-app-passwall
-        git clone https://github.com/xiaorouji/openwrt-passwall package/passwall-luci   
+        git clone https://github.com/jerrykuku/luci-theme-argon.git package/luci-theme-argon
 
-    - name: Import external feeds - JerryKuKu Argon
-      working-directory: ./openwrt
+    - name: Install Lucky plugin
+      working-directory: ./immortalwrt
       run: |
-        git clone https://github.com/jerrykuku/luci-theme-argon.git package/luci-theme-argon-jerrykuku
+        git clone https://github.com/gdy666/luci-app-lucky.git package/lucky
 
-    - name: Configuration Customization - Build_armv7
-      env:
-        CONFIG_FILE: 'armv7.config'
+    - name: Apply configuration
+      working-directory: ./immortalwrt
       run: |
-        [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
-        chmod +x ./customize.sh && ./customize.sh
-        cd openwrt && make defconfig
-      
-    - name: Import external feeds - passwall
-      working-directory: ./openwrt
-      run: |
-         git clone  https://github.com/gdy666/luci-app-lucky.git package/lucky
-   
-    - name: Download package
-      working-directory: ./openwrt
+        # 应用基础配置
+        [ -e ../armv7.config ] && cp ../armv7.config .config
+        [ -f ./customize.sh ] && chmod +x ./customize.sh && ./customize.sh
+        
+        # 生成默认配置
+        make defconfig
+
+    - name: Download packages
+      working-directory: ./immortalwrt
       run: |
         make download -j$(nproc)
-        find dl -size -1024c -exec ls -l {} \;
-        find dl -size -1024c -exec rm -f {} \;
+        find dl -size -1024c -exec rm -f {} \;  # 清理无效下载
 
     - name: Build firmware
-      working-directory: ./openwrt
+      working-directory: ./immortalwrt
       run: |
-        echo -e "$(nproc) thread build."
-        make -j$(nproc) V=s
+        echo "Building with $(nproc) threads"
+        make -j$(($(nproc) + 1)) V=s
 
-    - name : Upload artifact
-      uses: actions/upload-artifact@master
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
       with:
-        name: OpenWrt
-        path: openwrt/bin
+        name: immortalwrt_armv7
+        path: immortalwrt/bin/targets/*/*
+        retention-days: 3
