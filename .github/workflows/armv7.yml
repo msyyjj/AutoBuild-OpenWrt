@@ -7,44 +7,39 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-
+    timeout-minutes: 360
+    concurrency:
+      group: build-armv7-${{ github.ref }}
+      cancel-in-progress: true
 
     steps:
     - name: Checkout source
-    uses: actions/checkout@v4
-    
-    - name: Restore build cache
-    uses: actions/cache@v3
-    with:
-      path: |
-        openwrt/tmp
-        openwrt/staging_dir
-        openwrt/dl
-      key: build-armv7-${{ runner.os }}-${{ hashFiles('openwrt/.config') }}
-      restore-keys: |
-        build-armv7-${{ runner.os }}-
-        
-    - name: Checkout
       uses: actions/checkout@v4
 
-    - name: Initialization environment
+    - name: Restore build cache
+      uses: actions/cache@v3
+      with:
+        path: |
+          immortalwrt/tmp
+          immortalwrt/staging_dir
+          immortalwrt/dl
+        key: build-armv7-${{ runner.os }}-${{ hashFiles('armv7.config') }}
+        restore-keys: |
+          build-armv7-${{ runner.os }}-
+
+    - name: Init build environment
       env:
         DEBIAN_FRONTEND: noninteractive
       run: |
         set -ex
-        # 清理磁盘空间
         sudo rm -rf \
           /usr/share/dotnet \
           /usr/local/lib/android \
           /opt/ghc
-        
-        # 使用 ImmortalWrt 官方环境脚本
         sudo bash -c 'bash <(curl -s https://build-scripts.immortalwrt.org/init_build_environment.sh)'
-        
-        # 额外安装必要工具
         sudo apt install -y qemu-utils upx-ucl
 
-    - name: Clone source code
+    - name: Clone ImmortalWrt
       env: 
         REPO_URL: https://github.com/immortalwrt/immortalwrt
         REPO_BRANCH: master
@@ -53,52 +48,38 @@ jobs:
         cd immortalwrt
         echo "src-git helloworld https://github.com/fw876/helloworld.git" >> ./feeds.conf.default
 
+    - name: Customize plugins
+      working-directory: ./immortalwrt
+      run: |
+        git clone https://github.com/xiaorouji/openwrt-passwall-packages package/passwall-packages
+        git clone https://github.com/xiaorouji/openwrt-passwall package/passwall
+        git clone https://github.com/jerrykuku/luci-theme-argon.git package/luci-theme-argon
+        git clone https://github.com/gdy666/luci-app-lucky.git package/lucky
+
     - name: Update feeds
       working-directory: ./immortalwrt
       run: |
         ./scripts/feeds update -a
         ./scripts/feeds install -a
 
-    - name: Install PassWall
-      working-directory: ./immortalwrt
-      run: |
-        # 更安全的 PassWall 安装方式
-        git clone https://github.com/xiaorouji/openwrt-passwall-packages package/passwall-packages
-        git clone https://github.com/xiaorouji/openwrt-passwall package/passwall
-        ./scripts/feeds install -a
-
-    - name: Install Argon theme
-      working-directory: ./immortalwrt
-      run: |
-        git clone https://github.com/jerrykuku/luci-theme-argon.git package/luci-theme-argon
-
-    - name: Install Lucky plugin
-      working-directory: ./immortalwrt
-      run: |
-        git clone https://github.com/gdy666/luci-app-lucky.git package/lucky
-
     - name: Apply configuration
       working-directory: ./immortalwrt
       run: |
-        # 应用基础配置
         [ -e ../armv7.config ] && cp ../armv7.config .config
         [ -f ./customize.sh ] && chmod +x ./customize.sh && ./customize.sh
-        
-        # 生成默认配置
         make defconfig
 
     - name: Download packages
       working-directory: ./immortalwrt
       run: |
         make download -j$(nproc)
-        find dl -size -1024c -exec rm -f {} \;  # 清理无效下载
-        
-        
+        find dl -size -1024c -exec rm -f {} \;
+
     - name: Build firmware
       working-directory: ./immortalwrt
       run: |
         echo "Building with $(nproc) threads"
-        make -j$(($(nproc) + 1)) V=s
+        make -j$(($(nproc)+1)) V=s
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
@@ -106,3 +87,11 @@ jobs:
         name: immortalwrt_armv7
         path: immortalwrt/bin/targets/*/*
         retention-days: 3
+
+    # ✅ 可选：构建成功通知（你可以启用这个）
+    # - name: Notify success
+    #   run: |
+    #     curl -s -X POST "https://api.telegram.org/bot${{ secrets.BOT_TOKEN }}/sendMessage" \
+    #       -d chat_id="${{ secrets.CHAT_ID }}" \
+    #       -d text="✅ 构建成功: immortalwrt_armv7 🎉"
+
