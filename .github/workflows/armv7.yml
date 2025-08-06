@@ -64,8 +64,12 @@ jobs:
       working-directory: ./immortalwrt
       run: |
         sed -i '$a src-git smpackage https://github.com/kenzok8/small-package' feeds.conf.default
+        sed -i '$a src-git passwall_packages https://github.com/xiaorouji/openwrt-passwall-packages.git;main' feeds.conf.default
+        sed -i '$a src-git passwall_luci https://github.com/xiaorouji/openwrt-passwall.git;main' feeds.conf.default
         ./scripts/feeds update -a
         ./scripts/feeds install -a
+        ./scripts/feeds update -a
+        ./scripts/feeds install -a        
 
     - name: Apply configuration
       working-directory: ./immortalwrt
