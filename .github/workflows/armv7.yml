@@ -10,6 +10,20 @@ jobs:
 
 
     steps:
+    - name: Checkout source
+    uses: actions/checkout@v4
+    
+    - name: Restore build cache
+    uses: actions/cache@v3
+    with:
+      path: |
+        openwrt/tmp
+        openwrt/staging_dir
+        openwrt/dl
+      key: build-armv7-${{ runner.os }}-${{ hashFiles('openwrt/.config') }}
+      restore-keys: |
+        build-armv7-${{ runner.os }}-
+        
     - name: Checkout
       uses: actions/checkout@v4
 
@@ -78,7 +92,8 @@ jobs:
       run: |
         make download -j$(nproc)
         find dl -size -1024c -exec rm -f {} \;  # 清理无效下载
-
+        
+        
     - name: Build firmware
       working-directory: ./immortalwrt
       run: |
