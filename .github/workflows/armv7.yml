@@ -79,6 +79,15 @@ jobs:
       run: |
         echo "Building with $(nproc) threads"
         make -j$(($(nproc)+1)) V=s
+        
+    - name: Save build cache
+      uses: actions/cache@v3
+      with:
+        path: |
+          immortalwrt/tmp
+          immortalwrt/staging_dir
+          immortalwrt/dl
+    key: build-armv7-${{ runner.os }}-${{ hashFiles('armv7.config') }}
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
