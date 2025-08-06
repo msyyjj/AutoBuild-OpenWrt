@@ -1,6 +1,6 @@
 name: Build_armv7
 
-on: 
+on:
   repository_dispatch:
   workflow_dispatch:
 
@@ -16,6 +16,11 @@ jobs:
     - name: Checkout source
       uses: actions/checkout@v4
 
+    - name: Debug config hash input
+      run: |
+        ls -lh armv7.config || echo "armv7.config not found"
+        echo "Hash: ${{ hashFiles('armv7.config') }}"
+
     - name: Restore build cache
       uses: actions/cache@v3
       with:
@@ -26,6 +31,7 @@ jobs:
         key: build-armv7-${{ runner.os }}-${{ hashFiles('armv7.config') }}
         restore-keys: |
           build-armv7-${{ runner.os }}-
+          build-armv7-
 
     - name: Init build environment
       env:
@@ -38,9 +44,9 @@ jobs:
           /opt/ghc
         sudo bash -c 'bash <(curl -s https://build-scripts.immortalwrt.org/init_build_environment.sh)'
         sudo apt install -y qemu-utils upx-ucl uuid-dev
-        
+
     - name: Clone ImmortalWrt
-      env: 
+      env:
         REPO_URL: https://github.com/immortalwrt/immortalwrt
         REPO_BRANCH: master
       run: |
@@ -48,11 +54,11 @@ jobs:
         cd immortalwrt
         echo "src-git helloworld https://github.com/fw876/helloworld.git" >> ./feeds.conf.default
 
-    #- name: Customize plugins
-      #working-directory: ./immortalwrt
-     # run: |
-       # git clone https://github.com/jerrykuku/luci-theme-argon.git package/luci-theme-argon
-        #git clone https://github.com/gdy666/luci-app-lucky.git package/lucky
+    # - name: Customize plugins
+    #   working-directory: ./immortalwrt
+    #   run: |
+    #     git clone https://github.com/jerrykuku/luci-theme-argon.git package/luci-theme-argon
+    #     git clone https://github.com/gdy666/luci-app-lucky.git package/lucky
 
     - name: Update feeds
       working-directory: ./immortalwrt
@@ -79,7 +85,7 @@ jobs:
       run: |
         echo "Building with $(nproc) threads"
         make -j$(($(nproc)+1)) V=s
-        
+
     - name: Save build cache
       uses: actions/cache@v3
       with:
@@ -87,7 +93,7 @@ jobs:
           immortalwrt/tmp
           immortalwrt/staging_dir
           immortalwrt/dl
-    key: build-armv7-${{ runner.os }}-${{ hashFiles('armv7.config') }}
+        key: build-armv7-${{ runner.os }}-${{ hashFiles('armv7.config') }}
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
@@ -96,10 +102,5 @@ jobs:
         path: immortalwrt/bin/targets/*/*
         retention-days: 3
 
-    # ✅ 可选：构建成功通知（你可以启用这个）
+    # ✅ 可选：构建成功通知
     # - name: Notify success
-    #   run: |
-    #     curl -s -X POST "https://api.telegram.org/bot${{ secrets.BOT_TOKEN }}/sendMessage" \
-    #       -d chat_id="${{ secrets.CHAT_ID }}" \
-    #       -d text="✅ 构建成功: immortalwrt_armv7 🎉"
-
