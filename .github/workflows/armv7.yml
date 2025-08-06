@@ -48,18 +48,16 @@ jobs:
         cd immortalwrt
         echo "src-git helloworld https://github.com/fw876/helloworld.git" >> ./feeds.conf.default
 
-    - name: Customize plugins
-      working-directory: ./immortalwrt
-      run: |
-        git clone https://github.com/jerrykuku/luci-theme-argon.git package/luci-theme-argon
-        git clone https://github.com/gdy666/luci-app-lucky.git package/lucky
+    #- name: Customize plugins
+      #working-directory: ./immortalwrt
+     # run: |
+       # git clone https://github.com/jerrykuku/luci-theme-argon.git package/luci-theme-argon
+        #git clone https://github.com/gdy666/luci-app-lucky.git package/lucky
 
     - name: Update feeds
       working-directory: ./immortalwrt
       run: |
         sed -i '$a src-git smpackage https://github.com/kenzok8/small-package' feeds.conf.default
-        echo "src-git passwall_packages https://github.com/xiaorouji/openwrt-passwall-packages.git;main" >> feeds.conf.default
-        echo "src-git passwall_luci https://github.com/xiaorouji/openwrt-passwall.git;main" >> feeds.conf.default
         ./scripts/feeds update -a
         ./scripts/feeds install -a
 
